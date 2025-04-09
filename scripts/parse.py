@@ -1,4 +1,3 @@
-# Function to parse GPX file and convert it to a DataFrame
 import io
 import pandas as pd
 import gpxpy

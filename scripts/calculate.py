@@ -3,52 +3,74 @@ import pandas as pd
 from geopy.distance import geodesic
 
 
-def get_sog_and_cog(prev_point, curr_point, time_diff):
-    # Compute distance in nautical miles
-    distance_nm = geodesic(prev_point, curr_point).nm
-
-    # Compute time difference in hours
-    sog = distance_nm / time_diff if time_diff > 0 else 0  # Speed in knots
-
-    # Compute heading using arctan2
-    lat1, lon1 = np.radians(prev_point)
-    lat2, lon2 = np.radians(curr_point)
-    delta_lon = lon2 - lon1
-    x = np.sin(delta_lon) * np.cos(lat2)
-    y = np.cos(lat1) * np.sin(lat2) - (np.sin(lat1) * np.cos(lat2) * np.cos(delta_lon))
-    cog = (np.degrees(np.arctan2(x, y)) + 360) % 360  # Normalize heading
-
-    return sog, cog
-
-
-def sog_and_cog(df):
+def get_sog_cog(df):
     sogs = [0.0]  # First point has no speed
     cogs = [0.0]  # First point has no heading
 
     for row in df.itertuples(index=True):
-        i = row.Index  # Get the row index
+        i = row.Index
         curr_point = (row.latitude, row.longitude)
         curr_time = row.Time
 
+        # Skip the first index to start with the second datapoint
         if i == 0:
             prev_point, prev_time = curr_point, curr_time
             continue
 
-        time_diff = (curr_time - prev_time).total_seconds() / 3600.0
-        sog, cog = get_sog_and_cog(prev_point, curr_point, time_diff)
+        # Calculate time difference
+        time_diff = (curr_time - prev_time).total_seconds() / 3600.0  # In hours
 
+        # Calculate distance difference
+        distance_diff = geodesic(prev_point, curr_point).nm  # In nautical miles
+
+        # Calculate SOG
+        sog = distance_diff / time_diff if time_diff > 0 else 0  # In knots
+
+        # Calculate COG using arctan2 formula
+        lat1, lon1 = np.radians(prev_point)
+        lat2, lon2 = np.radians(curr_point)
+        delta_lon = lon2 - lon1
+        x = np.sin(delta_lon) * np.cos(lat2)
+        y = np.cos(lat1) * np.sin(lat2) - (
+            np.sin(lat1) * np.cos(lat2) * np.cos(delta_lon)
+        )
+        cog = (np.degrees(np.arctan2(x, y)) + 360) % 360  # Normalize heading
+
+        # Update values and append
         prev_point, prev_time = curr_point, curr_time
-
         sogs.append(sog)
         cogs.append(cog)
 
     df["SOG"] = sogs
     df["COG"] = cogs
 
+    print("SOG and COG calculated")
+
     return df
 
 
-def twd(df, port_start, port_end, starboard_start, starboard_end):
+def do_smart_filtering(df, df_settings):
+    # Remove first 5 datapoints
+    df = df.iloc[5:].reset_index(drop=True)
+    print(df_settings)
+    # Remove points where SOG is larger than maximum boat SOG
+    maxSOG = float(df_settings["max_downwind_sog"].iloc[0])
+    print(maxSOG)
+    bad_idxs = df[df["SOG"] > maxSOG].index  # Find indices
+    to_remove = set()  # Create set if indices to remove
+    for idx in bad_idxs:
+        to_remove.update([idx - 1, idx, idx + 1])
+    to_remove = [
+        i for i in to_remove if 0 <= i < len(df)
+    ]  # Make sure we don't go out of DataFrame bounds
+    df = df.drop(to_remove).reset_index(drop=True)  # Drop the rows and reset index
+
+    print("Smart filtering done")
+
+    return df
+
+
+def get_twd(df, port_start, port_end, starboard_start, starboard_end):
     """Calculate True Wind Direction."""
     headings = df["COG"]
 
@@ -66,19 +88,25 @@ def twd(df, port_start, port_end, starboard_start, starboard_end):
     if abs(mean_port_heading - mean_starboard_heading) > 180:
         twd = (twd + 180) % 360
 
+    print("TWD calculated")
+
     return twd
 
 
-def vmg(df, twd):
+def get_vmg(df, twd):
     """Calculate Velocity Made Good (VMG) based on a target direction (e.g., upwind/downwind)."""
     df["VMG"] = df["SOG"] * np.cos(np.radians(df["COG"] - twd))
+
+    print("VMG calculated")
 
     return df
 
 
-def twa(df, twd=0):
+def get_twa(df, twd=0):
     """Calculate True Wind Angle (TWA) (angle with respect to wind direction, negative = left, positive = right)."""
     df["TWA"] = ((df["COG"] - twd + 180) % 360) - 180
+
+    print("TWA calculated")
 
     return df
 
@@ -127,6 +155,19 @@ def group_by_maneuvers(new_df):
     )
 
     return df_maneuvers
+
+
+def maneuver_dataframe(df):
+    # Pre-allocated lists to create dataframe
+    latitudes, longitudes, times = [], [], []
+    sogs, cogs, twas, vmgs = [], [], [], []
+    maneuver_ids, maneuver_types = [], []
+
+    # Check if VMG column exists, else exit the function
+    if "VMG" not in df.columns:
+        return "'ERROR!! You need to set the wind direction first!!!'"
+
+    first_valid_index = df.first_valid_index()
 
 
 def get_maneuvers(df):

@@ -1,6 +1,8 @@
 import folium
 import gradio as gr
+import plotly.express as px
 from branca.colormap import linear
+import plotly.graph_objects as go
 
 
 def map(df, start_index=0, end_index=None, twd=0):
@@ -75,7 +77,7 @@ def map(df, start_index=0, end_index=None, twd=0):
 def plot_column_by_time(df, x_col, y_columns, y_lim=None, height=None):
     # Prepare data for Gradio LinePlot (stacked format)
     # plot_data = df.melt(id_vars=[col_x], value_vars=col_y_list, var_name="Metric", value_name="Value")
-    df["Time"] = df.index.tolist()
+    # df["Time"] = df.index.tolist()
     plot_data = df.melt(
         id_vars=[x_col], value_vars=y_columns, var_name="Metric", value_name="Value"
     )
@@ -92,3 +94,99 @@ def plot_column_by_time(df, x_col, y_columns, y_lim=None, height=None):
     )
 
     return line_plot
+
+
+def get_polar_plot_2(df):
+    df = df.sort_values(by="TWA")
+    fig = px.line_polar(df, r="SOG", theta="TWA", title="Sailing Polar Plot")
+    return fig
+
+
+def get_polar_plot_3(df):
+    print("Making polar plot")
+    closed_r = df["SOG"].tolist() + [df["SOG"].iloc[0]]
+    closed_theta = df["TWA"].tolist() + [df["TWA"].iloc[0]]
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatterpolar(
+            r=closed_r,
+            theta=closed_theta,
+            mode="markers",
+            line=dict(color="orange"),
+        )
+    )
+
+    fig.update_layout(
+        title="Polar Plot",
+        polar=dict(
+            radialaxis=dict(visible=True),
+            angularaxis=dict(rotation=90),  # Optional: rotate starting angle
+        ),
+        showlegend=False,
+    )
+    print("hell2")
+    return fig
+
+
+import plotly.graph_objects as go
+
+
+def get_polar_plot(df):
+    print("Making polar plot")
+    closed_r = df["SOG"].tolist() + [df["SOG"].iloc[0]]
+    closed_theta = df["TWA"].tolist() + [df["TWA"].iloc[0]]
+
+    fig = go.Figure()
+
+    # Scatterpolar plot with improved styling
+    fig.add_trace(
+        go.Scatterpolar(
+            r=closed_r,
+            theta=closed_theta,
+            mode="markers",  # Only markers, no lines
+            marker=dict(
+                color="orange",  # Marker color
+                size=10,  # Marker size
+                line=dict(width=2, color="black"),  # Border around markers
+            ),
+        )
+    )
+
+    # Update layout for better appearance
+    fig.update_layout(
+        title="Sailing Polar Plot",
+        title_x=0.5,  # Center title
+        title_font=dict(size=24, color="darkblue", family="Arial"),  # Title styling
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                showticklabels=True,
+                ticks="outside",
+                ticklen=10,
+                tickwidth=2,
+                tickcolor="grey",  # Customize radial axis ticks
+            ),
+            angularaxis=dict(
+                rotation=90,  # Start angle at 90 degrees
+                direction="clockwise",  # Rotate direction
+                tickmode="array",  # Use array for specific ticks
+                tickvals=[0, 90, 180, 270],  # Show only the cardinal directions
+                ticktext=["0°", "90°", "180°", "270°"],  # Custom angular ticks
+                showticklabels=True,
+                ticks="outside",
+                ticklen=10,
+                tickwidth=2,
+                tickcolor="grey",  # Customize angular axis ticks
+            ),
+        ),
+        showlegend=False,  # Hide the legend
+        plot_bgcolor="white",  # Set background to white for a clean look
+        margin=dict(t=50, b=50, l=50, r=50),  # Adjust margins for better spacing
+        height=600,  # Set a fixed height for the plot
+        width=600,  # Set a fixed width for the plot
+    )
+
+    print("Finished polar plot")
+    return fig
