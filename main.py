@@ -1,12 +1,19 @@
 # - IMPORTS
+import os
+import tempfile
+from datetime import datetime
 import gradio as gr
 import pandas as pd
-from scripts.visualize import map
+from scripts.visualize import get_map
 from scripts.wrappers import (
     calculate_event,
     maneuver_event,
     settings_event,
     upload_event,
+    timeline_rescale_event,
+    dataframe_rescale_event,
+    reset_data_event,
+    calculate_twd_event,
 )
 # --
 
@@ -116,14 +123,24 @@ with gr.Blocks(css=css_style_2) as demo:
     gr.HTML(windtellect_logo_html)
 
     # Create dataframe
-    dataframe = gr.Dataframe(visible=False, datatype="pandas")
+    dataframe_full = gr.Dataframe(visible=False, datatype="pandas")
+    dataframe_select = gr.Dataframe(visible=False, datatype="pandas")
+    dataframe_maneuvers = gr.Dataframe(visible=False, datatype="pandas")
+
+    # Variables for cropping the track
+    track_start = gr.Number(label="Start Point", visible=False)
+    track_end = gr.Number(label="End Point", visible=False)
 
     # Sidebar for setting wind direction
     with gr.Sidebar(position="right"):
-        track_start = gr.Number(label="Start Point", visible=False)
-        track_end = gr.Number(label="End Point", visible=False)
-        twd = gr.Number(label="Wind direction")
-        set_twd_button = gr.Button("Set TWD")
+        with gr.Row():
+            smart_filter_checkbox = gr.Checkbox(
+                label="Enable smart filtering", value=False
+            )
+
+        with gr.Row():
+            twd = gr.Number(label="Wind direction")
+            set_twd_button = gr.Button("Set TWD")
 
         with gr.Accordion("🧭 Wind Direction Calculator", open=False):
             # Starboard Section
@@ -148,8 +165,9 @@ with gr.Blocks(css=css_style_2) as demo:
                     elem_id="map-container"
                 )  # Assign a custom ID for styling
             with gr.Row(scale=1):
-                speed_by_time = gr.LinePlot()
-
+                timeline_plot = gr.LinePlot()
+            with gr.Row(scale=1):
+                reset_data_button = gr.Button("↩️", size="sm")
     # Tab for data analysis
     with gr.Tab("📈 Data Analysis"):
         with gr.Row():
@@ -186,13 +204,12 @@ with gr.Blocks(css=css_style_2) as demo:
         calculate_maneuver_button = gr.Button("Calculate maneuvers")
         with gr.Row():
             with gr.Column(scale=1):
-                df_maneuver = gr.Dataframe(visible=False)
                 # Checkboxes in a column
                 checkboxes = []
                 with gr.Row():  # Align table with checkboxes
                     with gr.Column():
                         gr.Markdown("### Select Rows:")
-                        for i in range(df_maneuver.row_count[0]):
+                        for i in range(dataframe_maneuvers.row_count[0]):
                             checkboxes.append(gr.Checkbox(label=f"Maneuver {i}"))
             with gr.Column(scale=3):
                 text = gr.Text()
@@ -240,37 +257,28 @@ with gr.Blocks(css=css_style_2) as demo:
                     label="Minimum VMG", value=df_settings["min_vmg"][0]
                 )
         set_settings_button = gr.Button("Set settings")
-
-        smart_filter_checkbox = gr.Checkbox(label="Enable smart filtering")
-
-    # Select time frame from speed by time plot
-    time_graphs = [speed_by_time]  # , plot_1, plot_2]
-
-    def rescale(select: gr.SelectData):
-        print(round(select.index[0]), type(select.index[0]))
-        return [round(select.index[0]), round(select.index[1])]
-
-    rescale_evt = gr.on(
-        [plot.select for plot in time_graphs], rescale, None, [track_start, track_end]
-    )
+    # Tab for track visualization
+    with gr.Tab("📁 Export data"):
+        gr.Markdown("### GPS Track Exporter")
+        input_text = gr.Textbox(label="Enter indices (comma-separated, e.g. 0,1,4)")
+        filename_input = gr.Textbox(label="Filename (e.g. my_export.txt)")
+        output_file = gr.File(label="Download CSV", visible=False)
+        status = gr.Textbox(label="Status", interactive=False)
+        export_button = gr.Button("Export to text")
 
     # EVENT-TRIGGERED CALLBACKS:
     # To improve code readibility, we define "calculate_event_inputs" and "calculate_event_outputs"
     calculate_event_inputs = [
-        dataframe,
-        set_dataframe,
-        port_start,
-        port_end,
-        starboard_start,
-        starboard_end,
+        dataframe_select,
         set_dataframe,
         twd,
         smart_filter_checkbox,
     ]
     calculate_event_outputs = [
         twd,
-        dataframe,
+        dataframe_select,
         map_output,
+        timeline_plot,
         plot_1_up,
         plot_2_up,
         plot_1_down,
@@ -282,12 +290,40 @@ with gr.Blocks(css=css_style_2) as demo:
     file_input.change(
         upload_event,
         inputs=file_input,
-        outputs=[dataframe, map_output, speed_by_time],
+        outputs=[dataframe_full, dataframe_select, map_output, timeline_plot],
     )
+
+    # Triggering when user selects range in timeline plot -> updates dataframe, map and lineplot
+    gr.on(
+        [timeline_plot.select],
+        timeline_rescale_event,
+        inputs=None,
+        outputs=[track_start, track_end],
+    )
+
+    track_end.change(
+        dataframe_rescale_event,
+        inputs=[dataframe_select, track_start, track_end, twd],
+        outputs=[dataframe_select, map_output, timeline_plot],
+    )
+
+    # Triggering when user clicks reset button -> resets initial dataframe, map and lineplot
+    reset_data_button.click(
+        reset_data_event,
+        inputs=dataframe_full,
+        outputs=[dataframe_select, map_output, timeline_plot],
+    )
+
     # Triggering when clicking the TWD calculator -> calculates TWD, VMG and TWA and plots
     calculate_twd_button.click(
-        calculate_event,
-        inputs=calculate_event_inputs,
+        calculate_twd_event,
+        inputs=[
+            port_start,
+            port_end,
+            starboard_start,
+            starboard_end,
+            *calculate_event_inputs,  # Operator * flatens the list to avoid nesting
+        ],
         outputs=calculate_event_outputs,
     )
 
@@ -339,22 +375,63 @@ with gr.Blocks(css=css_style_2) as demo:
     # Calculate maneuvers
     calculate_maneuver_button.click(
         maneuver_event,
-        inputs=[dataframe, twd],
-        outputs=[df_maneuver],  # , checkbox_container],  # , maneuver_map_output]
+        inputs=[dataframe_full, twd],
+        outputs=[
+            dataframe_maneuvers
+        ],  # , checkbox_container],  # , maneuver_map_output]
     )
 
-    # Triggering when changing the track start or end -> plot
-    track_start.change(
-        map, inputs=[dataframe, track_start, track_end, twd], outputs=map_output
-    )
-    track_end.change(
-        map, inputs=[dataframe, track_start, track_end, twd], outputs=map_output
-    )
-    # --
+    def parse_index_ranges(index_str):
+        parts = index_str.split(",")
+        indices = set()
+
+        for part in parts:
+            part = part.strip()
+            if "-" in part:
+                try:
+                    start, end = map(int, part.split("-"))
+                    indices.update(range(start, end + 1))
+                except ValueError:
+                    continue  # skip invalid range
+            else:
+                try:
+                    indices.add(int(part))
+                except ValueError:
+                    continue  # skip invalid number
+
+        return sorted(i for i in indices)
+
+    def save_selected_tracks(indices_str, df, filename_input):
+        try:
+            selected_indices = parse_index_ranges(indices_str)
+            selected_data = df.loc[
+                selected_indices, ["SOG", "COG", "VMG", "TWA"]
+            ]  # Only these columns
+
+            # Ensure safe filename
+            if not filename_input.endswith(".txt"):
+                filename_input += ".txt"
+            safe_name = filename_input.replace("/", "_").replace("\\", "_")
+            file_path = os.path.join(os.getcwd(), safe_name)
+
+            # Save the file
+            selected_data.to_csv(file_path, index=False, sep="\t")
+
+            return file_path, f"Saved {len(selected_data)} rows to: {file_path}"
+
+        except Exception as e:
+            return None, f"Error: {str(e)}"
+
+    export_button.click(
+        fn=save_selected_tracks,
+        inputs=[input_text, dataframe_select, filename_input],
+        outputs=[output_file, status],
+    )  # --
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(share=False)
 
+    # FUNCTION DEFINITIONS:::::::::
     def update_checkboxes(df):
         # Get the row count of the dataframe
         row_count = len(df)
@@ -369,7 +446,9 @@ if __name__ == "__main__":
         return checkboxes
 
     # Trigger the update_checkboxes function whenever the dataframe is updated
-    df_maneuver.change(fn=update_checkboxes, inputs=df_maneuver, outputs=checkboxes)
+    dataframe_maneuvers.change(
+        fn=update_checkboxes, inputs=dataframe_maneuvers, outputs=checkboxes
+    )
 
     def show_one_maneuver(board, dataframe, twd, evt: gr.SelectData):
         if evt.value:
@@ -380,15 +459,15 @@ if __name__ == "__main__":
 
             # print(maneuver_id, maneuver_start, maneuver_end)
 
-            html_map = map(
+            html_map = get_map(
                 dataframe, start_index=maneuver_start, end_index=maneuver_end, twd=twd
             )
 
         return f"{maneuver_id}", html_map
 
-    df_maneuver.select(
+    dataframe_maneuvers.select(
         show_one_maneuver,
-        [df_maneuver, dataframe, twd],
+        [dataframe_maneuvers, dataframe_full, twd],
         [text, maneuver_map_output],
         show_progress="hidden",
     )

@@ -5,7 +5,7 @@ from branca.colormap import linear
 import plotly.graph_objects as go
 
 
-def map(df, start_index=0, end_index=None, twd=0):
+def get_map(df, start_index=0, end_index=None, twd=0):
     # Default to full DataFrame if end_index is not provided
     end_index = end_index or len(df)
     df_subset = df[start_index : end_index + 1]
@@ -71,70 +71,100 @@ def map(df, start_index=0, end_index=None, twd=0):
         ).add_to(m)
 
     # Return the map as HTML
+
     return m._repr_html_()
 
 
-def plot_column_by_time(df, x_col, y_columns, y_lim=None, height=None):
-    # Prepare data for Gradio LinePlot (stacked format)
-    # plot_data = df.melt(id_vars=[col_x], value_vars=col_y_list, var_name="Metric", value_name="Value")
-    # df["Time"] = df.index.tolist()
-    plot_data = df.melt(
-        id_vars=[x_col], value_vars=y_columns, var_name="Metric", value_name="Value"
-    )
-
-    line_plot = gr.LinePlot(
-        plot_data,
-        x=x_col,
-        y="Value",
-        y_title=f"{', '.join(y_columns)}",
-        x_label=False,
-        y_lim=y_lim,
-        height=height,
+def get_timeline_plot(df):
+    print("Getting timeline plot")
+    timeline_plot = gr.LinePlot(
+        value=df,
+        x="Elapsed_time",
+        y="SOG",
+        title=False,
+        x_axis_labels_visible=True,
+        x_title="Time",
+        y_title="SOG",
+        height=150,
         container=False,
     )
-
-    return line_plot
-
-
-def get_polar_plot_2(df):
-    df = df.sort_values(by="TWA")
-    fig = px.line_polar(df, r="SOG", theta="TWA", title="Sailing Polar Plot")
-    return fig
+    return timeline_plot
 
 
-def get_polar_plot_3(df):
-    print("Making polar plot")
-    closed_r = df["SOG"].tolist() + [df["SOG"].iloc[0]]
-    closed_theta = df["TWA"].tolist() + [df["TWA"].iloc[0]]
+def get_upwind_vmgsog_plot(df):
+    print("Getting upwind VMG vs SOG plot")
+    aux_df = df[(df["TWA"] > -90) & (df["TWA"] < 90)][["VMG", "SOG"]]
 
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatterpolar(
-            r=closed_r,
-            theta=closed_theta,
-            mode="markers",
-            line=dict(color="orange"),
-        )
+    plot = gr.LinePlot(
+        value=aux_df,
+        x="SOG",
+        y="VMG",
+        title=False,
+        x_axis_labels_visible=True,
+        x_title="SOG",
+        y_title="VMG",
+        height=150,
+        container=False,
     )
+    return plot
 
-    fig.update_layout(
-        title="Polar Plot",
-        polar=dict(
-            radialaxis=dict(visible=True),
-            angularaxis=dict(rotation=90),  # Optional: rotate starting angle
-        ),
-        showlegend=False,
+
+def get_upwind_vmgtwa_plot(df):
+    print("Getting upwind VMG vs TWA plot")
+    aux_df = df[(df["TWA"] > -90) & (df["TWA"] < 90)][["VMG", "TWA"]]
+
+    plot = gr.LinePlot(
+        value=aux_df,
+        x="TWA",
+        y="VMG",
+        title=False,
+        x_axis_labels_visible=True,
+        x_title="TWA",
+        y_title="VMG",
+        height=150,
+        container=False,
     )
-    print("hell2")
-    return fig
+    return plot
 
 
-import plotly.graph_objects as go
+def get_downwind_vmgsog_plot(df):
+    print("Getting downwind VMG vs SOG plot")
+    aux_df = df[(df["TWA"] < -90) & (df["TWA"] > 90)][["VMG", "SOG"]]
+
+    plot = gr.LinePlot(
+        value=aux_df,
+        x="SOG",
+        y="VMG",
+        title=False,
+        x_axis_labels_visible=True,
+        x_title="SOG",
+        y_title="VMG",
+        height=150,
+        container=False,
+    )
+    return plot
+
+
+def get_downwind_vmgtwa_plot(df):
+    print("Getting downwind VMG vs TWA plot")
+    aux_df = df[(df["TWA"] < -90) & (df["TWA"] > 90)][["VMG", "TWA"]]
+
+    plot = gr.LinePlot(
+        value=aux_df,
+        x="TWA",
+        y="VMG",
+        title=False,
+        x_axis_labels_visible=True,
+        x_title="TWA",
+        y_title="VMG",
+        height=150,
+        container=False,
+    )
+    return plot
 
 
 def get_polar_plot(df):
-    print("Making polar plot")
+    print("Getting polar plot")
     closed_r = df["SOG"].tolist() + [df["SOG"].iloc[0]]
     closed_theta = df["TWA"].tolist() + [df["TWA"].iloc[0]]
 
@@ -148,17 +178,14 @@ def get_polar_plot(df):
             mode="markers",  # Only markers, no lines
             marker=dict(
                 color="orange",  # Marker color
-                size=10,  # Marker size
-                line=dict(width=2, color="black"),  # Border around markers
+                size=5,  # Marker size
+                line=dict(width=2, color="white"),  # Border around markers
             ),
         )
     )
 
     # Update layout for better appearance
     fig.update_layout(
-        title="Sailing Polar Plot",
-        title_x=0.5,  # Center title
-        title_font=dict(size=24, color="darkblue", family="Arial"),  # Title styling
         polar=dict(
             radialaxis=dict(
                 visible=True,
@@ -182,11 +209,10 @@ def get_polar_plot(df):
             ),
         ),
         showlegend=False,  # Hide the legend
-        plot_bgcolor="white",  # Set background to white for a clean look
+        plot_bgcolor="rgba(0,0,0,0)",  # Set background to white for a clean look
         margin=dict(t=50, b=50, l=50, r=50),  # Adjust margins for better spacing
         height=600,  # Set a fixed height for the plot
         width=600,  # Set a fixed width for the plot
     )
 
-    print("Finished polar plot")
     return fig

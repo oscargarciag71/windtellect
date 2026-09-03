@@ -63,4 +63,8 @@ def gpx_to_dataframe(gpx_file):
         }
     )
 
+    start_time = df["Time"].iloc[0]
+    # Convert to minutes from start
+    df["Elapsed_time"] = (df["Time"] - start_time).dt.total_seconds() / 60
+
     return df

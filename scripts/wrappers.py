@@ -9,93 +9,90 @@ from scripts.calculate import (
     group_by_maneuvers,
     do_smart_filtering,
 )
-from scripts.visualize import map, plot_column_by_time, get_polar_plot
+from scripts.visualize import (
+    get_map,
+    get_polar_plot,
+    get_timeline_plot,
+    get_upwind_vmgsog_plot,
+    get_upwind_vmgtwa_plot,
+    get_downwind_vmgsog_plot,
+    get_downwind_vmgtwa_plot,
+)
 from scripts.parse import gpx_to_dataframe
 
 
 def upload_event(file_input):
-    df = gpx_to_dataframe(file_input)
-    df = get_sog_cog(df)
-    html_map = map(df)
-    line_plot = plot_column_by_time(df, "Time", ["SOG"], [0, 40], 150)
+    df_full = gpx_to_dataframe(file_input)
+    df_full = get_sog_cog(df_full)
+    html_map = get_map(df_full)
+    line_plot = get_timeline_plot(df_full)
+    df_select = df_full
+    print("Upload event finished")
 
-    return df, html_map, line_plot
+    return df_full, df_select, html_map, line_plot
 
 
 def calculate_event(
     df,
     df_settings,
-    port_start,
-    port_end,
-    starboard_start,
-    starboard_end,
-    plot_settings,
     twd=0,
-    smart_filter_checkbox=True,
+    smart_filter_checkbox=False,
 ):
-    print("Before convert")
-
-    print(df["Time"].dtype)
-    df["Time"] = pd.to_datetime(df["Time"])
-    print("After convert")
-    print(df["Time"].dtype)
-
     df = get_sog_cog(df)
 
+    print("twd")
+    print(twd)
+
     try:
-        twd = float(twd)
+        # twd = float(twd)
         print("TWD has been converted to float")
     except (ValueError, TypeError):
         twd = 0.0  # fallback if the value is missing, invalid, or empty
 
     if smart_filter_checkbox:
         df = do_smart_filtering(df, df_settings)
-        print(df)
 
-    if twd == 0:
-        twd = get_twd(df, port_start, port_end, starboard_start, starboard_end)
     df = get_vmg(df, twd)
     df = get_twa(df, twd)
-    html_map = map(df, twd=twd)
+    html_map = get_map(df, twd=twd)
 
-    height = 250
-    # Upwind plots
-    # plot_1_df = df[df['VMG'] > 5]
-    plot_1_df = df[df["VMG"] > plot_settings["min_vmg"][0]]
-    # plot_1_df = plot_1_df[plot_1_df['SOG'] > 5]
-    plot_1_df = plot_1_df[plot_1_df["SOG"] > plot_settings["min_upwind_sog"][0]]
-    # plot_1_df = plot_1_df[plot_1_df['TWA'] < 55]
-    plot_1_df = plot_1_df[plot_1_df["TWA"] < plot_settings["max_upwind_twa"][0]]
-    # plot_1_df = plot_1_df[plot_1_df['TWA'] > -55]
-    plot_1_df = plot_1_df[plot_1_df["TWA"] > -plot_settings["max_upwind_twa"][0]]
-
-    plot_1_up = plot_column_by_time(plot_1_df, "SOG", ["VMG"], height=height)
-
-    # plot_2_df = df[df['VMG'] > 8]
-    plot_2_df = df[df["VMG"] > plot_settings["min_vmg"][0]]
-    # plot_2_df = plot_2_df[plot_2_df['SOG'] > 5]
-    plot_2_df = plot_2_df[plot_2_df["SOG"] > plot_settings["min_upwind_sog"][0]]
-    plot_2_up = plot_column_by_time(plot_2_df, "TWA", ["VMG"], height=height)
-
-    # Downwind plots
-    # plot_1_df = df[df['VMG'] < -5]
-    plot_1_df = df[df["VMG"] < -plot_settings["min_vmg"][0]]
-    # plot_1_df = plot_1_df[plot_1_df['SOG'] > 5]
-    plot_1_df = plot_1_df[plot_1_df["SOG"] > plot_settings["min_downwind_sog"][0]]
-
-    # plot_1_df = plot_1_df[plot_1_df['TWA'] < -120]
-    # plot_1_df = plot_1_df[plot_1_df['TWA'] > 120]
-    plot_1_down = plot_column_by_time(plot_1_df, "SOG", ["VMG"], height=height)
-
-    # plot_2_df = df[df['VMG'] < -8]
-    plot_2_df = df[df["VMG"] < -plot_settings["min_vmg"][0]]
-    # plot_2_df = plot_2_df[plot_2_df['SOG'] > 5]
-    plot_2_df = plot_2_df[plot_2_df["SOG"] > plot_settings["min_downwind_sog"][0]]
-    plot_2_down = plot_column_by_time(plot_2_df, "TWA", ["VMG"], height=height)
-
+    timeline_plot = get_timeline_plot(df)
+    upwind_vmgsog_plot = get_upwind_vmgsog_plot(df)
+    upwind_vgmtwa_plot = get_upwind_vmgtwa_plot(df)
+    downwind_vmgsog_plot = get_downwind_vmgsog_plot(df)
+    downwind_vmgtwa_plot = get_downwind_vmgtwa_plot(df)
     polar_plot = get_polar_plot(df)
 
-    return twd, df, html_map, plot_1_up, plot_2_up, plot_1_down, plot_2_down, polar_plot
+    return (
+        twd,
+        df,
+        html_map,
+        timeline_plot,
+        upwind_vmgsog_plot,
+        upwind_vgmtwa_plot,
+        downwind_vmgsog_plot,
+        downwind_vmgtwa_plot,
+        polar_plot,
+    )
+
+
+def calculate_twd_event(
+    port_start,
+    port_end,
+    starboard_start,
+    starboard_end,
+    df,
+    df_settings,
+    twd=0,
+    smart_filter_checkbox=False,
+):
+    print("hello")
+    twd = get_twd(df, port_start, port_end, starboard_start, starboard_end)
+    calculate_event_outputs = calculate_event(
+        df, df_settings, twd=twd, smart_filter_checkbox=True
+    )
+
+    return calculate_event_outputs
 
 
 def maneuver_event(df, twd=0):
@@ -133,3 +130,44 @@ def settings_event(
     )
 
     return df_settings
+
+
+# Auxiliary function for callback, which returns de indices that the user selected in the timeline plot
+def timeline_rescale_event(
+    select: gr.SelectData,
+):
+    print("Timeline rescale indices selected")
+    print(select.index[0])
+    return [(select.index[0]), (select.index[1])]
+
+
+# Crops the dataframe
+def dataframe_rescale_event(df, track_start_unix, track_end_unix, twd=0):
+    print("Befire")
+    print(df["Time"])
+    print(df.dtypes)
+    # Make sure Time is parsed as datetime with timezone, needed because otherwise it's read as string
+    print("After")
+    print(df["Time"])
+    print(df.dtypes)
+
+    # 2. Convert Unix timestamps to timezone-aware datetime
+    track_start = track_start_unix
+    track_end = track_end_unix  # example end time
+
+    # 3. Crop the dataframe
+    df = df[
+        (df["Elapsed_time"] >= track_start) & (df["Elapsed_time"] <= track_end)
+    ].reset_index(drop=True)
+
+    map_output = get_map(df, start_index=0, end_index=None, twd=0)
+    timeline_plot = get_timeline_plot(df)
+
+    return df, map_output, timeline_plot
+
+
+def reset_data_event(df_full):
+    df_select = df_full
+    html_map = get_map(df_select, twd=0)
+    timeline_plot = get_timeline_plot(df_select)
+    return df_select, html_map, timeline_plot

@@ -10,7 +10,7 @@ def get_sog_cog(df):
     for row in df.itertuples(index=True):
         i = row.Index
         curr_point = (row.latitude, row.longitude)
-        curr_time = row.Time
+        curr_time = row.Elapsed_time
 
         # Skip the first index to start with the second datapoint
         if i == 0:
@@ -18,7 +18,7 @@ def get_sog_cog(df):
             continue
 
         # Calculate time difference
-        time_diff = (curr_time - prev_time).total_seconds() / 3600.0  # In hours
+        time_diff = (curr_time - prev_time) / 60.0  # In hours
 
         # Calculate distance difference
         distance_diff = geodesic(prev_point, curr_point).nm  # In nautical miles
@@ -50,12 +50,11 @@ def get_sog_cog(df):
 
 
 def do_smart_filtering(df, df_settings):
-    # Remove first 5 datapoints
-    df = df.iloc[5:].reset_index(drop=True)
     print(df_settings)
+    # Remove first 5 datapoints
+    # df = df.iloc[5:].reset_index(drop=True)
     # Remove points where SOG is larger than maximum boat SOG
     maxSOG = float(df_settings["max_downwind_sog"].iloc[0])
-    print(maxSOG)
     bad_idxs = df[df["SOG"] > maxSOG].index  # Find indices
     to_remove = set()  # Create set if indices to remove
     for idx in bad_idxs:
